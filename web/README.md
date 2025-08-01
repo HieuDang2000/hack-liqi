@@ -1,223 +1,265 @@
 # AOV External Map System
 
-Hệ thống render bản đồ bên ngoài cho Arena of Valor, tránh hook trực tiếp vào game để giảm thiểu khả năng bị phát hiện.
+Hệ thống bản đồ ngoài cho Arena of Valor sử dụng WebSocket và Node.js.
 
-**🌐 Live Demo:** https://map.meonohehe.men
+## 🌟 Tính năng
 
-## Cách hoạt động
+- **Real-time Map Rendering**: Hiển thị bản đồ game real-time
+- **WebSocket Communication**: Giao tiếp hai chiều với hack module
+- **External Rendering**: Không can thiệp trực tiếp vào game
+- **SSL Security**: HTTPS/WSS encryption
+- **Auto-scaling**: Hỗ trợ nhiều client đồng thời
+- **Health Monitoring**: Theo dõi trạng thái hệ thống
 
-1. **Hack Module**: Thu thập dữ liệu game thông qua Il2Cpp memory reading
-2. **WebSocket Client**: Gửi dữ liệu realtime qua WebSocket
-3. **WebSocket Server**: Nhận và phân phối dữ liệu
-4. **Web App**: Render bản đồ với thông tin enemy positions
+## 🏗️ Kiến trúc
 
-## 🚀 Deployment trên Server
+```
+┌─────────────────┐    WebSocket    ┌─────────────────┐    WebSocket    ┌─────────────────┐
+│   AOV Game      │ ──────────────► │  Node.js Server │ ──────────────► │  Web Browser    │
+│  (Hack Module)  │                 │   (Port 8080)   │                 │   (Port 8082)   │
+└─────────────────┘                 └─────────────────┘                 └─────────────────┘
+                                              │
+                                              ▼
+                                    ┌─────────────────┐
+                                    │   Nginx Proxy   │
+                                    │  (Port 80/443)  │
+                                    └─────────────────┘
+```
 
-### 1. Chuẩn bị Server
+## 🚀 Cài đặt
+
+### Yêu cầu hệ thống
 - Ubuntu 20.04+ hoặc Debian 11+
-- Domain: `map.meonohehe.men` (đã trỏ về server)
-- Root access
+- Node.js 18+
+- Nginx
+- SSL Certificate (Let's Encrypt)
 
-### 2. Chạy Deployment Script
+### Deploy tự động
 ```bash
 # Clone repository
-git clone <your-repo>
-cd web
+git clone https://github.com/your-repo/ZYGISK-AOV-AUTO-UPDATE.git
+cd ZYGISK-AOV-AUTO-UPDATE/web
 
-# Chạy deployment script
-chmod +x deploy.sh
-sudo ./deploy.sh
+# Chạy script deploy (cần quyền root)
+sudo bash deploy.sh
 ```
 
-### 3. Kiểm tra Deployment
+### Deploy thủ công
 ```bash
-# Kiểm tra status
-/usr/local/bin/aov-map-status.sh
+# 1. Cài đặt Node.js
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo bash -
+sudo apt install -y nodejs
+
+# 2. Cài đặt dependencies
+npm install --production
+
+# 3. Cấu hình Nginx
+sudo cp nginx.conf /etc/nginx/sites-available/map.meonohehe.men
+sudo ln -s /etc/nginx/sites-available/map.meonohehe.men /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+
+# 4. Khởi động service
+sudo systemctl start aov-map-system
+sudo systemctl enable aov-map-system
+```
+
+## 📋 Cấu hình
+
+### Ports
+- **8080**: WebSocket cho game data (từ hack module)
+- **8081**: HTTP server cho web interface
+- **8082**: WebSocket cho web clients
+- **80/443**: Nginx proxy với SSL
+
+### Environment Variables
+```bash
+NODE_ENV=production
+PORT=8081
+DOMAIN=map.meonohehe.men
+```
+
+## 🔧 Quản lý
+
+### Systemd Commands
+```bash
+# Khởi động service
+sudo systemctl start aov-map-system
+
+# Dừng service
+sudo systemctl stop aov-map-system
+
+# Restart service
+sudo systemctl restart aov-map-system
+
+# Xem status
+sudo systemctl status aov-map-system
 
 # Xem logs
-journalctl -u aov-map-server -f
+sudo journalctl -u aov-map-system -f
 ```
 
-## 📱 Cấu hình Hack Module
-
-### Cập nhật hack.cpp
-Hack module sẽ tự động kết nối với server:
-```cpp
-const char* SERVER_DOMAIN = "map.meonohehe.men";
-const int SERVER_PORT = 8080;
-```
-
-### Build và Install
+### Management Script
 ```bash
-# Build hack module
-ndk-build
-
-# Install APK
-adb install bin/ImGui_Zygisk.apk
+# Sử dụng script quản lý
+sudo aov-map-manage start    # Khởi động
+sudo aov-map-manage stop     # Dừng
+sudo aov-map-manage restart  # Restart
+sudo aov-map-manage status   # Xem status
+sudo aov-map-manage logs     # Xem logs
+sudo aov-map-manage update   # Cập nhật
 ```
 
-## 🌐 Truy cập Web Interface
+## 🌐 Truy cập
 
-### URLs
 - **Web Interface**: https://map.meonohehe.men
-- **WebSocket (Game)**: wss://map.meonohehe.men/ws/game
-- **WebSocket (Web)**: wss://map.meonohehe.men/ws/web
+- **Health Check**: https://map.meonohehe.men/health
+- **Game WebSocket**: ws://map.meonohehe.men:8080
+- **Web WebSocket**: ws://map.meonohehe.men:8082
 
-### Features
-- ✅ Real-time map rendering
-- ✅ Enemy position tracking
-- ✅ HP bars và status
-- ✅ Auto-reconnect
-- ✅ Mobile responsive
+## 📊 Monitoring
 
-## 📊 Cấu trúc dữ liệu
+### Health Check
+```bash
+curl https://map.meonohehe.men/health
+```
 
-### Game Data Format
+Response:
 ```json
 {
-  "type": "game_data",
-  "timestamp": 1234567890,
-  "my_data": {
-    "position": {"x": 100.0, "y": 0.0, "z": 200.0},
-    "camp": 1
-  },
-  "enemies": [
-    {
-      "position": {"x": 150.0, "y": 0.0, "z": 250.0},
-      "camp": 2,
-      "hp": 1500,
-      "max_hp": 2000,
-      "name": "Enemy Hero"
-    }
-  ]
+  "status": "ok",
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "gameClients": 1,
+  "webClients": 5,
+  "domain": "map.meonohehe.men"
 }
 ```
 
-## 🔧 Management Commands
-
-### Service Management
+### Logs
 ```bash
-# Start service
-sudo systemctl start aov-map-server
-
-# Stop service
-sudo systemctl stop aov-map-server
-
-# Restart service
-sudo systemctl restart aov-map-server
-
-# View logs
-journalctl -u aov-map-server -f
-```
-
-### Nginx Management
-```bash
-# Reload Nginx
-sudo systemctl reload nginx
-
-# Test config
-sudo nginx -t
-
-# View logs
+# Nginx logs
 sudo tail -f /var/log/nginx/map.meonohehe.men.access.log
+sudo tail -f /var/log/nginx/map.meonohehe.men.error.log
+
+# Application logs
+sudo journalctl -u aov-map-system -f
 ```
 
-### SSL Certificate
+## 🔒 Bảo mật
+
+### SSL/TLS
+- Tự động cấu hình SSL với Let's Encrypt
+- HSTS headers
+- Modern cipher suites
+- Auto-renewal certificates
+
+### Security Headers
+- X-Frame-Options: DENY
+- X-Content-Type-Options: nosniff
+- X-XSS-Protection: 1; mode=block
+- Strict-Transport-Security
+
+### Firewall
+- UFW enabled
+- Only necessary ports open
+- SSH access restricted
+
+## 🛠️ Troubleshooting
+
+### Common Issues
+
+**1. Service không khởi động**
 ```bash
-# Renew SSL certificate
+# Kiểm tra logs
+sudo journalctl -u aov-map-system -n 50
+
+# Kiểm tra port
+sudo netstat -tlnp | grep :8080
+sudo netstat -tlnp | grep :8081
+```
+
+**2. WebSocket connection failed**
+```bash
+# Kiểm tra firewall
+sudo ufw status
+
+# Kiểm tra nginx config
+sudo nginx -t
+```
+
+**3. SSL certificate issues**
+```bash
+# Renew certificate
 sudo certbot renew
 
 # Check certificate status
 sudo certbot certificates
 ```
 
-## 🛡️ Security Features
+### Performance Tuning
 
-### SSL/TLS
-- HTTPS với Let's Encrypt certificate
-- HTTP/2 support
-- Security headers
-
-### Firewall
-- UFW enabled
-- Only necessary ports open (22, 80, 443, 8080, 8081)
-
-### Monitoring
-- Auto-restart service nếu crash
-- Health check endpoint
-- Log monitoring
-
-## 📈 Monitoring & Logs
-
-### Log Locations
-- **Service Logs**: `/var/log/aov-map-monitor.log`
-- **Nginx Access**: `/var/log/nginx/map.meonohehe.men.access.log`
-- **Nginx Error**: `/var/log/nginx/map.meonohehe.men.error.log`
-
-### Health Check
+**1. Increase Node.js memory**
 ```bash
-# Check service health
-curl https://map.meonohehe.men/health
+# Edit service file
+sudo systemctl edit aov-map-system
 
-# Monitor real-time
-watch -n 5 '/usr/local/bin/aov-map-status.sh'
+# Add environment variable
+[Service]
+Environment=NODE_OPTIONS="--max-old-space-size=2048"
 ```
 
-## 🔄 Update Process
+**2. Nginx optimization**
+```bash
+# Edit nginx.conf
+worker_processes auto;
+worker_connections 1024;
+```
 
-### Update Web Interface
+## 📈 Scaling
+
+### Load Balancing
+```nginx
+upstream aov_backend {
+    server 127.0.0.1:8081;
+    server 127.0.0.1:8082;
+    server 127.0.0.1:8083;
+}
+```
+
+### Multiple Instances
+```bash
+# Clone service for multiple instances
+sudo cp /etc/systemd/system/aov-map-system.service /etc/systemd/system/aov-map-system-2.service
+sudo systemctl edit aov-map-system-2
+# Change port and working directory
+```
+
+## 🔄 Updates
+
+### Auto Update
+```bash
+# Setup cron job for auto updates
+echo "0 2 * * * /usr/local/bin/aov-map-manage update" | sudo crontab -
+```
+
+### Manual Update
 ```bash
 cd /var/www/map.meonohehe.men
 git pull
-sudo systemctl restart aov-map-server
-```
-
-### Update Server Code
-```bash
-cd /var/www/map.meonohehe.men
-git pull
-pip3 install -r requirements.txt
-sudo systemctl restart aov-map-server
-```
-
-## 🚨 Troubleshooting
-
-### Service không start
-```bash
-# Check service status
-sudo systemctl status aov-map-server
-
-# Check logs
-journalctl -u aov-map-server -n 50
-
-# Check dependencies
-python3 -c "import websockets, asyncio"
-```
-
-### WebSocket không kết nối
-```bash
-# Check port status
-sudo netstat -tlnp | grep :8081
-
-# Test WebSocket
-wscat -c wss://map.meonohehe.men/ws/web
-```
-
-### SSL Issues
-```bash
-# Check certificate
-sudo certbot certificates
-
-# Renew certificate
-sudo certbot renew --force-renewal
+npm install --production
+sudo systemctl restart aov-map-system
 ```
 
 ## 📞 Support
 
-- **Domain**: map.meonohehe.men
 - **Email**: admin@meonohehe.men
-- **Status Page**: https://map.meonohehe.men/health
+- **Issues**: GitHub Issues
+- **Documentation**: README.md
 
-## 🔒 Privacy & Legal
+## 📄 License
 
-⚠️ **Disclaimer**: Hệ thống này chỉ dành cho mục đích giáo dục và nghiên cứu. Người dùng chịu trách nhiệm về việc sử dụng hợp pháp. 
+MIT License - Xem file LICENSE để biết thêm chi tiết.
+
+---
+
+**Lưu ý**: Hệ thống này chỉ dành cho mục đích giáo dục và nghiên cứu. Sử dụng có trách nhiệm và tuân thủ luật pháp địa phương. 

@@ -3,8 +3,10 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <netdb.h>
 #include <thread>
-#include <json/json.h>
+#include <sstream>
+#include <iomanip>
 
 // WebSocket connection
 int ws_socket = -1;
@@ -71,35 +73,43 @@ bool connectWebSocket() {
 void sendGameData() {
     if (!ws_connected) return;
     
-    Json::Value root;
-    root["type"] = "game_data";
-    root["timestamp"] = (Json::Value::UInt64)time(NULL);
+    std::ostringstream json;
+    json << std::fixed << std::setprecision(2);
+    
+    json << "{";
+    json << "\"type\":\"game_data\",";
+    json << "\"timestamp\":" << (unsigned long long)time(NULL) << ",";
     
     // My position
-    Json::Value myData;
-    myData["position"]["x"] = currentGameData.myPosition.x;
-    myData["position"]["y"] = currentGameData.myPosition.y;
-    myData["position"]["z"] = currentGameData.myPosition.z;
-    myData["camp"] = currentGameData.myCamp;
-    root["my_data"] = myData;
+    json << "\"my_data\":{";
+    json << "\"position\":{";
+    json << "\"x\":" << currentGameData.myPosition.x << ",";
+    json << "\"y\":" << currentGameData.myPosition.y << ",";
+    json << "\"z\":" << currentGameData.myPosition.z;
+    json << "},";
+    json << "\"camp\":" << currentGameData.myCamp;
+    json << "},";
     
     // Enemies data
-    Json::Value enemies = Json::Value(Json::arrayValue);
+    json << "\"enemies\":[";
     for (size_t i = 0; i < currentGameData.enemyPositions.size(); i++) {
-        Json::Value enemy;
-        enemy["position"]["x"] = currentGameData.enemyPositions[i].x;
-        enemy["position"]["y"] = currentGameData.enemyPositions[i].y;
-        enemy["position"]["z"] = currentGameData.enemyPositions[i].z;
-        enemy["camp"] = currentGameData.enemyCamps[i];
-        enemy["hp"] = currentGameData.enemyHPs[i];
-        enemy["max_hp"] = currentGameData.enemyMaxHPs[i];
-        enemy["name"] = currentGameData.enemyNames[i];
-        enemies.append(enemy);
+        if (i > 0) json << ",";
+        json << "{";
+        json << "\"position\":{";
+        json << "\"x\":" << currentGameData.enemyPositions[i].x << ",";
+        json << "\"y\":" << currentGameData.enemyPositions[i].y << ",";
+        json << "\"z\":" << currentGameData.enemyPositions[i].z;
+        json << "},";
+        json << "\"camp\":" << currentGameData.enemyCamps[i] << ",";
+        json << "\"hp\":" << currentGameData.enemyHPs[i] << ",";
+        json << "\"max_hp\":" << currentGameData.enemyMaxHPs[i] << ",";
+        json << "\"name\":\"" << currentGameData.enemyNames[i] << "\"";
+        json << "}";
     }
-    root["enemies"] = enemies;
+    json << "]";
+    json << "}";
     
-    Json::FastWriter writer;
-    std::string json_str = writer.write(root);
+    std::string json_str = json.str();
     
     // WebSocket frame
     std::string frame;
