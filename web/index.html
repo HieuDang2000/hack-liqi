@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AOV External Map - map.meonohehe.men</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: white;
+        }
+        
+        .container {
+            display: flex;
+            gap: 20px;
+            height: 100vh;
+        }
+        
+        .map-container {
+            flex: 1;
+            background: #2a2a2a;
+            border-radius: 10px;
+            padding: 20px;
+            position: relative;
+        }
+        
+        .info-panel {
+            width: 300px;
+            background: #2a2a2a;
+            border-radius: 10px;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .map-canvas {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, #1e3c72, #2a5298);
+            border-radius: 8px;
+            position: relative;
+        }
+        
+        .player {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #00ff00;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+        }
+        
+        .enemy {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: #ff0000;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 5;
+        }
+        
+        .enemy.low-hp {
+            background: #ff6600;
+        }
+        
+        .enemy-name {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            white-space: nowrap;
+            transform: translate(-50%, -100%);
+            margin-top: -5px;
+        }
+        
+        .hp-bar {
+            position: absolute;
+            width: 20px;
+            height: 3px;
+            background: #333;
+            border-radius: 2px;
+            transform: translate(-50%, -100%);
+            margin-top: -15px;
+        }
+        
+        .hp-fill {
+            height: 100%;
+            background: #00ff00;
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+        
+        .status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        
+        .status.connected {
+            border-left: 3px solid #00ff00;
+        }
+        
+        .status.disconnected {
+            border-left: 3px solid #ff0000;
+        }
+        
+        .enemy-list {
+            margin-top: 20px;
+        }
+        
+        .enemy-item {
+            background: #333;
+            margin: 5px 0;
+            padding: 10px;
+            border-radius: 5px;
+            border-left: 3px solid #ff0000;
+        }
+        
+        .enemy-item.low-hp {
+            border-left-color: #ff6600;
+        }
+        
+        .enemy-hp {
+            font-size: 12px;
+            color: #ccc;
+        }
+        
+        .coordinates {
+            font-size: 10px;
+            color: #888;
+            margin-top: 5px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #00ff00;
+            margin: 0;
+        }
+        
+        .header p {
+            color: #888;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="status disconnected" id="status">
+        Disconnected
+    </div>
+    
+    <div class="header">
+        <h1>AOV External Map</h1>
+        <p>map.meonohehe.men:8081</p>
+    </div>
+    
+    <div class="container">
+        <div class="map-container">
+            <h2>Live Game Map</h2>
+            <div class="map-canvas" id="mapCanvas">
+                <!-- Map elements will be added here -->
+            </div>
+        </div>
+        
+        <div class="info-panel">
+            <h3>Game Info</h3>
+            <div id="gameInfo">
+                <p>Waiting for data...</p>
+            </div>
+            
+            <div class="enemy-list">
+                <h3>Enemies</h3>
+                <div id="enemyList">
+                    <p>No enemies detected</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class AOVMapRenderer {
+            constructor() {
+                this.ws = null;
+                this.gameData = null;
+                this.mapCanvas = document.getElementById('mapCanvas');
+                this.statusElement = document.getElementById('status');
+                this.gameInfoElement = document.getElementById('gameInfo');
+                this.enemyListElement = document.getElementById('enemyList');
+                
+                // Server configuration
+                this.serverDomain = 'map.meonohehe.men';
+                this.serverPort = '8081';
+                
+                // Map scale and offset for AOV coordinates
+                this.mapScale = 0.1;
+                this.mapOffsetX = 0;
+                this.mapOffsetY = 0;
+                
+                this.connect();
+            }
+            
+            connect() {
+                const wsUrl = `ws://${this.serverDomain}:${this.serverPort}`;
+                this.ws = new WebSocket(wsUrl);
+                
+                this.ws.onopen = () => {
+                    this.updateStatus(`Connected to ${this.serverDomain}`, true);
+                };
+                
+                this.ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        this.updateGameData(data);
+                    } catch (e) {
+                        console.error('Error parsing game data:', e);
+                    }
+                };
+                
+                this.ws.onclose = () => {
+                    this.updateStatus(`Disconnected from ${this.serverDomain}`, false);
+                    // Reconnect after 5 seconds
+                    setTimeout(() => this.connect(), 5000);
+                };
+                
+                this.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    this.updateStatus(`Error connecting to ${this.serverDomain}`, false);
+                };
+            }
+            
+            updateStatus(text, connected) {
+                this.statusElement.textContent = text;
+                this.statusElement.className = `status ${connected ? 'connected' : 'disconnected'}`;
+            }
+            
+            updateGameData(data) {
+                this.gameData = data;
+                this.renderMap();
+                this.updateInfo();
+            }
+            
+            renderMap() {
+                if (!this.gameData) return;
+                
+                // Clear existing elements
+                this.mapCanvas.innerHTML = '';
+                
+                // Render player
+                if (this.gameData.my_data) {
+                    this.renderPlayer(this.gameData.my_data);
+                }
+                
+                // Render enemies
+                if (this.gameData.enemies) {
+                    this.gameData.enemies.forEach(enemy => {
+                        this.renderEnemy(enemy);
+                    });
+                }
+            }
+            
+            renderPlayer(playerData) {
+                const player = document.createElement('div');
+                player.className = 'player';
+                
+                const x = this.worldToScreenX(playerData.position.x);
+                const y = this.worldToScreenY(playerData.position.z);
+                
+                player.style.left = x + 'px';
+                player.style.top = y + 'px';
+                
+                this.mapCanvas.appendChild(player);
+            }
+            
+            renderEnemy(enemyData) {
+                const enemy = document.createElement('div');
+                enemy.className = 'enemy';
+                
+                const x = this.worldToScreenX(enemyData.position.x);
+                const y = this.worldToScreenY(enemyData.position.z);
+                
+                enemy.style.left = x + 'px';
+                enemy.style.top = y + 'px';
+                
+                // Add HP bar
+                const hpBar = document.createElement('div');
+                hpBar.className = 'hp-bar';
+                hpBar.style.left = x + 'px';
+                hpBar.style.top = y + 'px';
+                
+                const hpFill = document.createElement('div');
+                hpFill.className = 'hp-fill';
+                const hpPercent = (enemyData.hp / enemyData.max_hp) * 100;
+                hpFill.style.width = hpPercent + '%';
+                
+                if (hpPercent < 30) {
+                    hpFill.style.background = '#ff6600';
+                    enemy.classList.add('low-hp');
+                }
+                
+                hpBar.appendChild(hpFill);
+                
+                // Add enemy name
+                const name = document.createElement('div');
+                name.className = 'enemy-name';
+                name.textContent = enemyData.name;
+                name.style.left = x + 'px';
+                name.style.top = y + 'px';
+                
+                this.mapCanvas.appendChild(enemy);
+                this.mapCanvas.appendChild(hpBar);
+                this.mapCanvas.appendChild(name);
+            }
+            
+            worldToScreenX(worldX) {
+                return (worldX * this.mapScale) + this.mapOffsetX + (this.mapCanvas.offsetWidth / 2);
+            }
+            
+            worldToScreenY(worldZ) {
+                return (worldZ * this.mapScale) + this.mapOffsetY + (this.mapCanvas.offsetHeight / 2);
+            }
+            
+            updateInfo() {
+                if (!this.gameData) return;
+                
+                // Update game info
+                if (this.gameData.my_data) {
+                    const player = this.gameData.my_data;
+                    this.gameInfoElement.innerHTML = `
+                        <p><strong>My Position:</strong></p>
+                        <p>X: ${player.position.x.toFixed(2)}</p>
+                        <p>Y: ${player.position.y.toFixed(2)}</p>
+                        <p>Z: ${player.position.z.toFixed(2)}</p>
+                        <p><strong>Camp:</strong> ${player.camp}</p>
+                        <p><strong>Last Update:</strong> ${new Date(this.gameData.timestamp * 1000).toLocaleTimeString()}</p>
+                    `;
+                }
+                
+                // Update enemy list
+                if (this.gameData.enemies && this.gameData.enemies.length > 0) {
+                    this.enemyListElement.innerHTML = this.gameData.enemies.map(enemy => `
+                        <div class="enemy-item ${(enemy.hp / enemy.max_hp) < 0.3 ? 'low-hp' : ''}">
+                            <div><strong>${enemy.name}</strong></div>
+                            <div class="enemy-hp">HP: ${enemy.hp}/${enemy.max_hp} (${Math.round((enemy.hp / enemy.max_hp) * 100)}%)</div>
+                            <div class="coordinates">X: ${enemy.position.x.toFixed(2)}, Z: ${enemy.position.z.toFixed(2)}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    this.enemyListElement.innerHTML = '<p>No enemies detected</p>';
+                }
+            }
+        }
+        
+        // Initialize the map renderer
+        const mapRenderer = new AOVMapRenderer();
+    </script>
+</body>
+</html> 
